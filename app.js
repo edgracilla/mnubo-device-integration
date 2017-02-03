@@ -1,114 +1,119 @@
-'use strict';
+'use strict'
 
-var get           = require('lodash.get'),
-	platform      = require('./platform'),
-	isPlainObject = require('lodash.isplainobject'),
-	mnuboClient;
+const reekoh = require('demo-reekoh-node')
+const _plugin = new reekoh.plugins.DeviceSync()
 
-var _addObject = function (device) {
-	let type = get(device, 'metadata.type') || get(device, 'metadata.device_type') || 'rkhdevice';
+const get = require('lodash.get')
+const mnubo = require('mnubo-sdk')
+const isPlainObject = require('lodash.isplainobject')
 
-	mnuboClient.objects
-		.create({
-			x_device_id: device._id,
-			x_object_type: type
-		})
-		.then((object) => {
-			platform.log(JSON.stringify({
-				title: 'Device added to Mnubo.',
-				data: object
-			}));
-		})
-		.catch((error) => {
-			platform.handleException(error);
-		});
-};
+let mnuboClient
 
-var _updateObject = function (device) {
-	let type = get(device, 'metadata.type') || get(device, 'metadata.device_type') || 'rkhdevice';
+let pushDevice = (action, device) => {
+  let ret = null
+  let type = get(device, 'metadata.type') || get(device, 'metadata.device_type') || 'rkhdevice'
 
-	mnuboClient.objects
-		.update(device._id, {
-			x_object_type: type
-		})
-		.then((object) => {
-			platform.log(JSON.stringify({
-				title: 'Device updated on Mnubo.',
-				data: object
-			}));
-		})
-		.catch((error) => {
-			platform.handleException(error);
-		});
-};
+  return new Promise((resolve, reject) => {
+    if (action === 'add') {
+      ret = mnuboClient.objects
+        .create({
+          x_device_id: device._id,
+          x_object_type: type
+        })
+    } else if (action === 'upd') {
+      ret = mnuboClient.objects
+        .update(device._id, {
+          x_object_type: type
+        })
+    } else {
+      reject(new Error('pushDevice() action not specified'))
+    }
 
-platform.on('adddevice', function (device) {
-	if (isPlainObject(device)) {
-		mnuboClient.objects
-			.exists(device._id)
-			.then((objects) => {
-				if (objects[device._id])
-					_updateObject(device);
-				else
-					_addObject(device);
-			})
-			.catch((error) => {
-				platform.handleException(error);
-			});
-	}
-	else
-		platform.handleException(new Error(`Invalid data received. Data must be a valid Array/JSON Object or a collection of objects. Data: ${device}`));
-});
+    ret.then((object) => {
+      return _plugin.log(JSON.stringify({
+        title: 'Device added to Mnubo.',
+        data: object
+      }))
+    })
+    .then(() => {
+      resolve()
+    })
+    .catch((error) => {
+      reject(error)
+    })
+  })
+}
 
-platform.on('updatedevice', function (device) {
-	if (isPlainObject(device)) {
-		mnuboClient.objects
-			.exists(device._id)
-			.then((objects) => {
-				if (objects[device._id])
-					_updateObject(device);
-				else
-					_addObject(device);
-			})
-			.catch((error) => {
-				platform.handleException(error);
-			});
-	}
-	else
-		platform.handleException(new Error(`Invalid data received. Data must be a valid Array/JSON Object or a collection of objects. Data: ${device}`));
-});
+_plugin.once('ready', () => {
+  mnuboClient = new mnubo.Client({
 
-platform.on('removedevice', function (device) {
-	if (isPlainObject(device)) {
-		mnuboClient.objects
-			.delete(device._id)
-			.then(function () {
-				platform.log(JSON.stringify({
-					title: 'Device removed from Mnubo.',
-					data: device
-				}));
-			})
-			.catch((error) => {
-				platform.handleException(error);
-			});
-	}
-	else
-		platform.handleException(new Error(`Invalid data received. Data must be a valid Array/JSON Object or a collection of objects. Data: ${device}`));
-});
+    // !?
+    env: process.env.MNUBO_ENV,
+    id: process.env.MNUBO_CLIENT_ID,
+    secret: process.env.MNUBO_CLIENT_SECRET
+  })
 
-platform.once('close', function () {
-	platform.notifyClose();
-});
+  _plugin.log('Device sync has been initialized.')
+  setImmediate(() => { process.send({ type: 'ready' }) }) // for mocha only
+})
 
-platform.once('ready', function (options) {
-	var mnubo = require('mnubo-sdk');
+_plugin.on('sync', () => {
+  // no sync code from old version
+})
 
-	mnuboClient = new mnubo.Client({
-		id: options.client_id,
-		secret: options.client_secret,
-		env: options.env
-	});
+_plugin.on('adddevice', (device) => {
+  if (!isPlainObject(device)) {
+    return _plugin.logException(new Error(`Invalid data received. Data must be a valid Array/JSON Object or a collection of objects. Data: ${device}`))
+  }
 
-	platform.notifyReady();
-	platform.log('Mnubo Device integration has been initialized.');
-});
+  mnuboClient.objects.exists(device._id)
+    .then((objects) => {
+      return objects[device._id]
+        ? pushDevice('upd', device)
+        : pushDevice('add', device)
+    })
+    .then(() => {
+      process.send({ type: 'adddevice', done: true }) // for mocha only
+    })
+    .catch((error) => {
+      _plugin.logException(error)
+    })
+})
+
+_plugin.on('updatedevice', (device) => {
+  if (!isPlainObject(device)) {
+    return _plugin.logException(new Error(`Invalid data received. Data must be a valid Array/JSON Object or a collection of objects. Data: ${device}`))
+  }
+  mnuboClient.objects.exists(device._id)
+    .then((objects) => {
+      return objects[device._id]
+        ? pushDevice('upd', device)
+        : pushDevice('add', device)
+    })
+    .then(() => {
+      process.send({ type: 'updatedevice', done: true }) // for mocha only
+    })
+    .catch((error) => {
+      _plugin.logException(error)
+    })
+})
+
+_plugin.on('removedevice', (device) => {
+  if (!isPlainObject(device)) {
+    return _plugin.logException(new Error(`Invalid data received. Data must be a valid Array/JSON Object or a collection of objects. Data: ${device}`))
+  }
+
+  mnuboClient.objects.delete(device._id)
+    .then(() => {
+      return _plugin.log(JSON.stringify({
+        title: 'Device removed from Mnubo.',
+        data: device
+      }))
+    })
+    .then(() => {
+      process.send({ type: 'removedevice', done: true }) // for mocha only
+    })
+    .catch((error) => {
+      _plugin.logException(error)
+    })
+})
