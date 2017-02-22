@@ -2,59 +2,62 @@
 
 'use strict'
 
-const cp = require('child_process')
-const should = require('should')
 const amqp = require('amqplib')
+const should = require('should')
+const cp = require('child_process')
 
-let deviceSync = null
-let _channel = {}
+const PLUGIN_ID = 'demo.dev-sync'
+const BROKER = 'amqp://guest:guest@127.0.0.1/'
+
+let conf = {
+  env: 'sandbox',
+  client_id: 'tPlQIrCvgWQbKtVlwudDhVfHlVecScb4Yp3XxkHglkKoa4iW4W',
+  client_secret: 'dLvvx7rRqfQCBeyhbaWJtAeGu94kwCnjsDedcQB7aM230JvKFW'
+}
+
+let _app = null
 let _conn = null
+let _channel = null
 
-describe('Device-integration', function () {
-  this.slow(5000)
-
+describe('Mnubo Device Sync', function () {
   let deviceId = `device-${Date.now() + 1}`
 
   before('init', () => {
-    process.env.PLUGIN_ID = 'demo.dev-sync'
-    process.env.BROKER = 'amqp://guest:guest@127.0.0.1/'
+    process.env.BROKER = BROKER
+    process.env.PLUGIN_ID = PLUGIN_ID
+    process.env.CONFIG = JSON.stringify(conf)
 
-    process.env.MNUBO_ENV = 'sandbox'
-    process.env.MNUBO_CLIENT_ID = 'tPlQIrCvgWQbKtVlwudDhVfHlVecScb4Yp3XxkHglkKoa4iW4W'
-    process.env.MNUBO_CLIENT_SECRET = 'dLvvx7rRqfQCBeyhbaWJtAeGu94kwCnjsDedcQB7aM230JvKFW'
-
-    amqp.connect(process.env.BROKER)
-      .then((conn) => {
-        _conn = conn
-        return conn.createChannel()
-      }).then((channel) => {
-        _channel = channel
-      }).catch((err) => {
-        console.log(err)
-      })
+    amqp.connect(BROKER).then((conn) => {
+      _conn = conn
+      return conn.createChannel()
+    }).then((channel) => {
+      _channel = channel
+    }).catch((err) => {
+      console.log(err)
+    })
   })
 
   after('terminate child process', function (done) {
-    this.timeout(5000)
+    this.timeout(10000)
 
+    _conn.close()
     setTimeout(() => {
-      _conn.close()
-      deviceSync.kill('SIGKILL')
+      _app.kill('SIGKILL')
       done()
     }, 4000)
   })
 
   describe('#spawn', function () {
     it('should spawn a child process', function () {
-      should.ok(deviceSync = cp.fork(process.cwd()), 'Child process not spawned.')
+      should.ok(_app = cp.fork(process.cwd()), 'Child process not spawned.')
     })
   })
 
   describe('#handShake', function () {
     it('should notify the parent process when ready within 5 seconds', function (done) {
-      this.timeout(5000)
+      this.timeout(10000)
 
-      deviceSync.on('message', function (message) {
+      _app.on('message', function (message) {
         if (message.type === 'ready') {
           done()
         } else if (message.type === 'error') {
@@ -66,7 +69,7 @@ describe('Device-integration', function () {
 
   describe('#adddevice', function () {
     it('should add the device', function (done) {
-      this.timeout(5000)
+      this.timeout(10000)
 
       let dummyData = {
         operation: 'adddevice',
@@ -78,9 +81,9 @@ describe('Device-integration', function () {
           }
         }}
 
-      _channel.sendToQueue(process.env.PLUGIN_ID, new Buffer(JSON.stringify(dummyData)))
+      _channel.sendToQueue(PLUGIN_ID, new Buffer(JSON.stringify(dummyData)))
 
-      deviceSync.on('message', function (msg) {
+      _app.on('message', function (msg) {
         if (msg.type === 'adddevice' && msg.done) {
           done()
         }
@@ -90,7 +93,7 @@ describe('Device-integration', function () {
 
   describe('#updatedevice', function () {
     it('should update the device', function (done) {
-      this.timeout(5000)
+      this.timeout(10000)
 
       let dummyData = {
         operation: 'updatedevice',
@@ -100,11 +103,12 @@ describe('Device-integration', function () {
           metadata: {
             type: 'Thermostat Model 2'
           }
-        }}
+        }
+      }
 
-      _channel.sendToQueue(process.env.PLUGIN_ID, new Buffer(JSON.stringify(dummyData)))
+      _channel.sendToQueue(PLUGIN_ID, new Buffer(JSON.stringify(dummyData)))
 
-      deviceSync.on('message', function (msg) {
+      _app.on('message', function (msg) {
         if (msg.type === 'updatedevice' && msg.done) {
           done()
         }
@@ -114,16 +118,16 @@ describe('Device-integration', function () {
 
   describe('#removedevice', function () {
     it('should remove the device', function (done) {
-      this.timeout(5000)
+      this.timeout(10000)
 
       let dummyData = {
         operation: 'removedevice',
         device: { _id: deviceId }
       }
 
-      _channel.sendToQueue(process.env.PLUGIN_ID, new Buffer(JSON.stringify(dummyData)))
+      _channel.sendToQueue(PLUGIN_ID, new Buffer(JSON.stringify(dummyData)))
 
-      deviceSync.on('message', function (msg) {
+      _app.on('message', function (msg) {
         if (msg.type === 'removedevice' && msg.done) {
           done()
         }
