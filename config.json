@@ -1,11 +1,11 @@
 {
-  "client_id": {
+  "clientId": {
     "label": "Client ID",
     "type": "String",
     "required": true,
     "help": "Your Mnubo Client ID."
   },
-  "client_secret": {
+  "clientSecret": {
     "label": "Client Secret",
     "type": "Password",
     "required": true,
