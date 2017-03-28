@@ -1,7 +1,7 @@
 'use strict'
 
 const reekoh = require('reekoh')
-const _plugin = new reekoh.plugins.InventorySync()
+const plugin = new reekoh.plugins.InventorySync()
 
 const get = require('lodash.get')
 const mnubo = require('mnubo-sdk')
@@ -28,7 +28,7 @@ let pushDevice = (action, device) => {
     }
 
     ret.then((object) => {
-      return _plugin.log(JSON.stringify({
+      return plugin.log(JSON.stringify({
         title: 'Device added to Mnubo.',
         data: object
       }))
@@ -40,13 +40,13 @@ let pushDevice = (action, device) => {
   })
 }
 
-_plugin.on('sync', () => {
+plugin.on('sync', () => {
   // no sync code from old version
 })
 
-_plugin.on('adddevice', (device) => {
+plugin.on('adddevice', (device) => {
   if (!isPlainObject(device)) {
-    return _plugin.logException(new Error(`Invalid data received. Data must be a valid Array/JSON Object or a collection of objects. Data: ${device}`))
+    return plugin.logException(new Error(`Invalid data received. Data must be a valid Array/JSON Object or a collection of objects. Data: ${device}`))
   }
 
   mnuboClient.objects.exists(device._id).then((objects) => {
@@ -54,51 +54,56 @@ _plugin.on('adddevice', (device) => {
       ? pushDevice('upd', device)
       : pushDevice('add', device)
   }).then(() => {
-    process.send({ type: 'adddevice', done: true })
+    plugin.emit('ADD_OK')
   }).catch((error) => {
-    _plugin.logException(error)
+    plugin.logException(error)
+    console.log(error)
   })
 })
 
-_plugin.on('updatedevice', (device) => {
+plugin.on('updatedevice', (device) => {
   if (!isPlainObject(device)) {
-    return _plugin.logException(new Error(`Invalid data received. Data must be a valid Array/JSON Object or a collection of objects. Data: ${device}`))
+    return plugin.logException(new Error(`Invalid data received. Data must be a valid Array/JSON Object or a collection of objects. Data: ${device}`))
   }
   mnuboClient.objects.exists(device._id).then((objects) => {
     return objects[device._id]
       ? pushDevice('upd', device)
       : pushDevice('add', device)
   }).then(() => {
-    process.send({ type: 'updatedevice', done: true })
+    plugin.emit('UPDATE_OK')
   }).catch((error) => {
-    _plugin.logException(error)
+    plugin.logException(error)
+    console.log(error)
   })
 })
 
-_plugin.on('removedevice', (device) => {
+plugin.on('removedevice', (device) => {
   if (!isPlainObject(device)) {
-    return _plugin.logException(new Error(`Invalid data received. Data must be a valid Array/JSON Object or a collection of objects. Data: ${device}`))
+    return plugin.logException(new Error(`Invalid data received. Data must be a valid Array/JSON Object or a collection of objects. Data: ${device}`))
   }
 
   mnuboClient.objects.delete(device._id).then(() => {
-    return _plugin.log(JSON.stringify({
+    return plugin.log(JSON.stringify({
       title: 'Device removed from Mnubo.',
       data: device
     }))
   }).then(() => {
-    process.send({ type: 'removedevice', done: true })
+    plugin.emit('REMOVE_OK')
   }).catch((error) => {
-    _plugin.logException(error)
+    plugin.logException(error)
+    console.log(error)
   })
 })
 
-_plugin.once('ready', () => {
+plugin.once('ready', () => {
   mnuboClient = new mnubo.Client({
-    env: _plugin.config.env,
-    id: _plugin.config.client_id,
-    secret: _plugin.config.client_secret
+    env: plugin.config.env,
+    id: plugin.config.client_id,
+    secret: plugin.config.client_secret
   })
 
-  _plugin.log('Device sync has been initialized.')
-  process.send({ type: 'ready' })
+  plugin.log('Device sync has been initialized.')
+  plugin.emit('init')
 })
+
+module.exports = plugin

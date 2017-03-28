@@ -4,7 +4,6 @@
 
 const amqp = require('amqplib')
 const should = require('should')
-const cp = require('child_process')
 
 const PLUGIN_ID = 'demo.dev-sync'
 const BROKER = 'amqp://guest:guest@127.0.0.1/'
@@ -19,7 +18,7 @@ let _app = null
 let _conn = null
 let _channel = null
 
-describe('Mnubo Device Sync', function () {
+describe('Mnubo Inventory Sync', function () {
   let deviceId = `device-${Date.now() + 1}`
 
   before('init', () => {
@@ -37,33 +36,15 @@ describe('Mnubo Device Sync', function () {
     })
   })
 
-  after('terminate child process', function (done) {
-    this.timeout(10000)
-
+  after('terminate', function () {
     _conn.close()
-    setTimeout(() => {
-      _app.kill('SIGKILL')
-      done()
-    }, 4000)
   })
 
-  describe('#spawn', function () {
-    it('should spawn a child process', function () {
-      should.ok(_app = cp.fork(process.cwd()), 'Child process not spawned.')
-    })
-  })
-
-  describe('#handShake', function () {
-    it('should notify the parent process when ready within 5 seconds', function (done) {
+  describe('#start', function () {
+    it('should start the app', function (done) {
       this.timeout(10000)
-
-      _app.on('message', function (message) {
-        if (message.type === 'ready') {
-          done()
-        } else if (message.type === 'error') {
-          console.log(message.data)
-        }
-      })
+      _app = require('../app')
+      _app.once('init', done)
     })
   })
 
@@ -71,7 +52,7 @@ describe('Mnubo Device Sync', function () {
     it('should add the device', function (done) {
       this.timeout(10000)
 
-      let dummyData = {
+      _channel.sendToQueue(PLUGIN_ID, new Buffer(JSON.stringify({
         operation: 'adddevice',
         device: {
           _id: deviceId,
@@ -79,15 +60,10 @@ describe('Mnubo Device Sync', function () {
           metadata: {
             type: 'Thermostat Model 1'
           }
-        }}
-
-      _channel.sendToQueue(PLUGIN_ID, new Buffer(JSON.stringify(dummyData)))
-
-      _app.on('message', function (msg) {
-        if (msg.type === 'adddevice' && msg.done) {
-          done()
         }
-      })
+      })))
+
+      _app.on('ADD_OK', done)
     })
   })
 
@@ -95,7 +71,7 @@ describe('Mnubo Device Sync', function () {
     it('should update the device', function (done) {
       this.timeout(10000)
 
-      let dummyData = {
+      _channel.sendToQueue(PLUGIN_ID, new Buffer(JSON.stringify({
         operation: 'updatedevice',
         device: {
           _id: deviceId,
@@ -104,15 +80,9 @@ describe('Mnubo Device Sync', function () {
             type: 'Thermostat Model 2'
           }
         }
-      }
+      })))
 
-      _channel.sendToQueue(PLUGIN_ID, new Buffer(JSON.stringify(dummyData)))
-
-      _app.on('message', function (msg) {
-        if (msg.type === 'updatedevice' && msg.done) {
-          done()
-        }
-      })
+      _app.on('UPDATE_OK', done)
     })
   })
 
@@ -120,18 +90,12 @@ describe('Mnubo Device Sync', function () {
     it('should remove the device', function (done) {
       this.timeout(10000)
 
-      let dummyData = {
+      _channel.sendToQueue(PLUGIN_ID, new Buffer(JSON.stringify({
         operation: 'removedevice',
         device: { _id: deviceId }
-      }
+      })))
 
-      _channel.sendToQueue(PLUGIN_ID, new Buffer(JSON.stringify(dummyData)))
-
-      _app.on('message', function (msg) {
-        if (msg.type === 'removedevice' && msg.done) {
-          done()
-        }
-      })
+      _app.on('REMOVE_OK', done)
     })
   })
 })
