@@ -50,9 +50,11 @@ plugin.on('adddevice', (device) => {
   }
 
   mnuboClient.objects.exists(device._id).then((objects) => {
-    return objects[device._id]
-      ? pushDevice('upd', device)
-      : pushDevice('add', device)
+    if (objects[device._id]) {
+      return pushDevice('upd', device)
+    } else {
+      return pushDevice('add', device)
+    }
   }).then(() => {
     plugin.emit('ADD_OK')
   }).catch((error) => {
@@ -66,9 +68,11 @@ plugin.on('updatedevice', (device) => {
     return plugin.logException(new Error(`Invalid data received. Data must be a valid Array/JSON Object or a collection of objects. Data: ${device}`))
   }
   mnuboClient.objects.exists(device._id).then((objects) => {
-    return objects[device._id]
-      ? pushDevice('upd', device)
-      : pushDevice('add', device)
+    if (objects[device._id]) {
+      return pushDevice('upd', device)
+    } else {
+      return pushDevice('add', device)
+    }
   }).then(() => {
     plugin.emit('UPDATE_OK')
   }).catch((error) => {
